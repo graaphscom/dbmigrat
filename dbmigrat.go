@@ -20,14 +20,17 @@ func Migrate(db *sql.DB, m Migrations, PO PackageOrder) error {
 	return nil
 }
 
-func fetchLastMigrationSerial(tx *sql.Tx) (int, error) {
+func fetchLastMigrationSerial(tx *sql.Tx) (int32, error) {
 	row := tx.QueryRow(`select max(migration_serial) from dbmigrat_log`)
-	var result int
+	var result sql.NullInt32
 	err := row.Scan(&result)
 	if err != nil {
 		return 0, err
 	}
-	return result, nil
+	if !result.Valid {
+		return -1, nil
+	}
+	return result.Int32, nil
 }
 
 func Rollback(beforeSerial int) {
