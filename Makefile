@@ -4,7 +4,7 @@ start-db:
 	docker run -e POSTGRES_PASSWORD=dbmigrat -e POSTGRES_USER=dbmigrat -d -p 5432:5432 postgres:13.3
 
 check-fmt:
-	gofmt -d .
+	DIFF=$$(gofmt -d .);echo "$${DIFF}";test -z "$${DIFF}"
 
 test:
 	go test
