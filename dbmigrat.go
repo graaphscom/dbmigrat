@@ -2,66 +2,45 @@ package dbmigrat
 
 import (
 	"database/sql"
+	"time"
 )
 
-func Migrate(db *sql.DB, m Migrations, PO PackageOrder) error {
-	var err error
-
-	//tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	//lastMigrationSerial, err := fetchLastMigrationSerial(tx)
-	//if err != nil {
-	//	return err
-	//}
-
-	return nil
-}
-
-func fetchLastMigrationSerial(tx *sql.Tx) (int32, error) {
-	row := tx.QueryRow(`select max(migration_serial) from dbmigrat_log`)
-	var result sql.NullInt32
-	err := row.Scan(&result)
-	if err != nil {
-		return 0, err
-	}
-	if !result.Valid {
-		return -1, nil
-	}
-	return result.Int32, nil
-}
-
-func Rollback(beforeSerial int) {
-
-}
-
-type Migrations map[Package][]Migration
+type Migrations map[Repo][]Migration
 
 type Migration struct {
-	Package Package
-	Up      string
-	Down    string
+	Description string
+	Up          string
+	Down        string
 }
 
-type PackageOrder []Package
+type RepoOrder []Repo
 
-// Package is package of migrations. It allows for storing migrations in several locations.
+// Repo is set of migrations. It allows for storing migrations in several locations.
 // Example:
-// e-commerce app might store authentication related migrations in module "auth"
-// while warehouse migrations in module "warehouse".
-type Package string
+// e-commerce app might store authentication related migrations in repo "auth"
+// while warehouse migrations in repo "warehouse".
+type Repo string
+
+type migrationLog struct {
+	Idx             int
+	Repo            Repo
+	MigrationSerial int `db:"migration_serial"`
+	Checksum        string
+	AppliedAt       time.Time `db:"applied_at"`
+	Description     string
+}
 
 func CreateLogTable(db *sql.DB) error {
 	_, err := db.Exec(`
 		create table if not exists dbmigrat_log
 		(
 		    idx              integer      not null,
-		    package          varchar(255) not null,
+		    repo             varchar(255) not null,
 		    migration_serial integer      not null,
+		    checksum         bytea        not null,
 		    applied_at       timestamp    not null default current_timestamp,
-		    primary key (idx, package)
+		    description      text         not null,
+		    primary key (idx, repo)
 		)
 	`)
 
