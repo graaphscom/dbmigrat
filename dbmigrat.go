@@ -2,6 +2,7 @@ package dbmigrat
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/go-multierror"
 	"github.com/jmoiron/sqlx"
@@ -71,11 +72,54 @@ func migrate(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder) error {
 	return nil
 }
 
+func Rollback(db *sqlx.DB, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) error {
+	tx, err := db.Beginx()
+	if err != nil {
+		return err
+	}
+	err = rollback(tx, migrations, repoOrder, toMigrationSerial)
+	if err != nil {
+		return multierror.Append(err, tx.Rollback())
+	}
+	return tx.Commit()
+}
+
+func rollback(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) error {
+	repoToReverseIndexes, err := fetchReverseMigrationIndexesAfterSerial(tx, toMigrationSerial)
+	if err != nil {
+		return err
+	}
+	var logsToDelete []migrationLog
+	for _, orderedRepo := range repoOrder {
+		reverseIndexes, ok := repoToReverseIndexes[orderedRepo]
+		if !ok {
+			continue
+		}
+		for _, migrationIdx := range reverseIndexes {
+			if len(migrations[orderedRepo]) < migrationIdx {
+				return errors.New("migrations passed to Rollback func are not in sync with migrations log. You might want to run CheckLogTableIntegrity func")
+			}
+			_, err := tx.Exec(migrations[orderedRepo][migrationIdx].Down)
+			if err != nil {
+				return err
+			}
+			logsToDelete = append(logsToDelete, migrationLog{Idx: migrationIdx, Repo: orderedRepo})
+		}
+	}
+	err = deleteLogs(tx, logsToDelete)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type Migrations map[Repo][]Migration
 
 type Migration struct {
 	Description string
 	Up          string
+	Down        string
 }
 
 type RepoOrder []Repo

@@ -75,6 +75,29 @@ func fetchLastMigrationIndexes(tx *sqlx.Tx) (map[Repo]int, error) {
 	return repoToMaxIdx, nil
 }
 
+func fetchReverseMigrationIndexesAfterSerial(tx *sqlx.Tx, serial int) (map[Repo][]int, error) {
+	var dest []struct {
+		Idx  int
+		Repo Repo
+	}
+	err := tx.Select(&dest, `select idx, repo from dbmigrat_log where migration_serial > $1 order by idx desc`, serial)
+	if err != nil {
+		return nil, err
+	}
+
+	repoToReverseMigrationIndexes := map[Repo][]int{}
+	for _, res := range dest {
+		repoToReverseMigrationIndexes[res.Repo] = append(repoToReverseMigrationIndexes[res.Repo], res.Idx)
+	}
+
+	return repoToReverseMigrationIndexes, nil
+}
+
+func deleteLogs(tx *sqlx.Tx, logs []migrationLog) error {
+	_, err := tx.NamedExec(`delete from dbmigrat_log where idx = :idx and repo = :repo`, logs)
+	return err
+}
+
 type migrationLog struct {
 	Idx             int
 	Repo            Repo
