@@ -22,7 +22,7 @@ func TestFetchLastMigrationSerial(t *testing.T) {
 	t.Run("Empty migrations log returns serial -1, no errors", func(t *testing.T) {
 		serial, err := fetchLastMigrationSerial(tx)
 		assert.NoError(t, err)
-		assert.Equal(t, int32(-1), serial)
+		assert.Equal(t, -1, serial)
 	})
 
 	t.Run("Migrations log with one migration returns serial 0, no errors", func(t *testing.T) {
@@ -35,7 +35,7 @@ func TestFetchLastMigrationSerial(t *testing.T) {
 		}}))
 		serial, err := fetchLastMigrationSerial(tx)
 		assert.NoError(t, err)
-		assert.Equal(t, int32(0), serial)
+		assert.Equal(t, 0, serial)
 	})
 
 	t.Run("Migrations log with two migrations returns serial 1, no errors", func(t *testing.T) {
@@ -48,6 +48,6 @@ func TestFetchLastMigrationSerial(t *testing.T) {
 		}}))
 		serial, err := fetchLastMigrationSerial(tx)
 		assert.NoError(t, err)
-		assert.Equal(t, int32(1), serial)
+		assert.Equal(t, 1, serial)
 	})
 }

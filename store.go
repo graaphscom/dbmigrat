@@ -29,7 +29,7 @@ func fetchAllMigrationLogs(db *sqlx.DB) ([]migrationLog, error) {
 	return migrationLogs, err
 }
 
-func fetchLastMigrationSerial(tx *sqlx.Tx) (int32, error) {
+func fetchLastMigrationSerial(tx *sqlx.Tx) (int, error) {
 	row := tx.QueryRow(`select max(migration_serial) from dbmigrat_log`)
 	var result sql.NullInt32
 	err := row.Scan(&result)
@@ -39,7 +39,7 @@ func fetchLastMigrationSerial(tx *sqlx.Tx) (int32, error) {
 	if !result.Valid {
 		return -1, nil
 	}
-	return result.Int32, nil
+	return int(result.Int32), nil
 }
 
 func insertLogs(db *sqlx.DB, logs []migrationLog) error {
