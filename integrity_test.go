@@ -1,15 +1,13 @@
 package dbmigrat
 
 import (
-	"crypto/sha1"
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestCheckLogTableIntegrity(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db.DB))
+	assert.NoError(t, CreateLogTable(db))
 
 	t.Run("Empty migrations log is not corrupted", func(t *testing.T) {
 		assert.NoError(t, truncateLogTable())
@@ -17,7 +15,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 		// # Check for no migrations passed from outside
 		result, err := CheckLogTableIntegrity(db, Migrations{})
 		assert.NoError(t, err)
-		assert.Equal(t, EmptyIntegrityCheckResult(), result)
+		assert.Equal(t, newIntegrityCheckResult(), result)
 
 		// # Check for several migrations passed from outside
 		result, err = CheckLogTableIntegrity(db, Migrations{
@@ -29,23 +27,19 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			}},
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, EmptyIntegrityCheckResult(), result)
+		assert.Equal(t, newIntegrityCheckResult(), result)
 	})
 
 	t.Run("Not corrupted log with one migration and extra migrations passed from outside", func(t *testing.T) {
 		assert.NoError(t, truncateLogTable())
 		upSql := "create table foo (id integer primary key)"
-		_, err := db.NamedExec(
-			`insert into dbmigrat_log values (:idx, :repo, :migration_serial, :checksum, default, :description)`,
-			migrationLog{
-				Idx:             0,
-				Repo:            "repo1",
-				MigrationSerial: 0,
-				Checksum:        fmt.Sprintf("%x", sha1.Sum([]byte(upSql))),
-				Description:     "example migration",
-			},
-		)
-		assert.NoError(t, err)
+		assert.NoError(t, insertLogs(db, []migrationLog{{
+			Idx:             0,
+			Repo:            "repo1",
+			MigrationSerial: 0,
+			Checksum:        sha1Checksum(upSql),
+			Description:     "example migration",
+		}}))
 
 		result, err := CheckLogTableIntegrity(db, Migrations{
 			"repo1": {
@@ -56,7 +50,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			"repo3": {Migration{Up: "example additional"}},
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, EmptyIntegrityCheckResult(), result)
+		assert.Equal(t, newIntegrityCheckResult(), result)
 	})
 
 	t.Run("Corrupted log", func(t *testing.T) {
@@ -72,23 +66,17 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			Idx:             1,
 			Repo:            "repo1",
 			MigrationSerial: 0,
-			Checksum:        fmt.Sprintf("%x", sha1.Sum([]byte("example"))),
+			Checksum:        sha1Checksum("example"),
 			Description:     "example redundant migration",
 		}
 		redundantRepo := migrationLog{
 			Idx:             0,
 			Repo:            "repoRedundant",
 			MigrationSerial: 0,
-			Checksum:        fmt.Sprintf("%x", sha1.Sum([]byte("example"))),
+			Checksum:        sha1Checksum("example"),
 			Description:     "example migration redundant repo",
 		}
-		_, err := db.NamedExec(`
-			insert into dbmigrat_log (idx, repo, migration_serial, checksum, applied_at, description)
-			values (:idx, :repo, :migration_serial, :checksum, default, :description)
-			`,
-			[]migrationLog{invalidChecksum, redundantMigration, redundantRepo},
-		)
-		assert.NoError(t, err)
+		assert.NoError(t, insertLogs(db, []migrationLog{invalidChecksum, redundantMigration, redundantRepo}))
 
 		result, err := CheckLogTableIntegrity(db, Migrations{
 			"repo1": {

@@ -1,20 +1,17 @@
 package dbmigrat
 
 import (
-	"crypto/sha1"
-	"fmt"
 	"github.com/jmoiron/sqlx"
 )
 
 func CheckLogTableIntegrity(db *sqlx.DB, migrations Migrations) (*IntegrityCheckResult, error) {
-	var migrationLogs []migrationLog
-	err := db.Select(&migrationLogs, `select * from dbmigrat_log`)
+	migrationLogs, err := fetchAllMigrationLogs(db)
 
 	if err != nil {
 		return nil, err
 	}
 
-	result := EmptyIntegrityCheckResult()
+	result := newIntegrityCheckResult()
 
 	for _, migrationLog := range migrationLogs {
 		repoMigrations, ok := migrations[migrationLog.Repo]
@@ -29,13 +26,22 @@ func CheckLogTableIntegrity(db *sqlx.DB, migrations Migrations) (*IntegrityCheck
 			continue
 		}
 
-		if migrationLog.Checksum != fmt.Sprintf("%x", sha1.Sum([]byte(repoMigrations[migrationLog.Idx].Up))) {
+		if migrationLog.Checksum != sha1Checksum(repoMigrations[migrationLog.Idx].Up) {
 			result.IsCorrupted = true
 			result.InvalidChecksums[migrationLog.Repo] = append(result.RedundantMigrations[migrationLog.Repo], migrationLog)
 		}
 	}
 
 	return result, nil
+}
+
+func newIntegrityCheckResult() *IntegrityCheckResult {
+	return &IntegrityCheckResult{
+		IsCorrupted:         false,
+		RedundantRepos:      map[Repo]bool{},
+		RedundantMigrations: map[Repo][]migrationLog{},
+		InvalidChecksums:    map[Repo][]migrationLog{},
+	}
 }
 
 // IntegrityCheckResult
@@ -45,13 +51,4 @@ type IntegrityCheckResult struct {
 	RedundantRepos      map[Repo]bool
 	RedundantMigrations map[Repo][]migrationLog
 	InvalidChecksums    map[Repo][]migrationLog
-}
-
-func EmptyIntegrityCheckResult() *IntegrityCheckResult {
-	return &IntegrityCheckResult{
-		IsCorrupted:         false,
-		RedundantRepos:      map[Repo]bool{},
-		RedundantMigrations: map[Repo][]migrationLog{},
-		InvalidChecksums:    map[Repo][]migrationLog{},
-	}
 }

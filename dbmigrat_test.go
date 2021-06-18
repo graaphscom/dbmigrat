@@ -3,7 +3,6 @@ package dbmigrat
 import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
 	"testing"
@@ -18,14 +17,6 @@ func TestMain(m *testing.M) {
 		log.Fatalln(err)
 	}
 	os.Exit(m.Run())
-}
-
-func TestCreateLogTable(t *testing.T) {
-	assert.NoError(t, resetDB())
-	// # Create table when it not exists
-	assert.NoError(t, CreateLogTable(db.DB))
-	// # Try to create table when it exists
-	assert.NoError(t, CreateLogTable(db.DB))
 }
 
 func resetDB() error {
