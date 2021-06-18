@@ -3,6 +3,7 @@ package dbmigrat
 import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
 	"testing"
@@ -17,6 +18,43 @@ func TestMain(m *testing.M) {
 		log.Fatalln(err)
 	}
 	os.Exit(m.Run())
+}
+
+func TestMigrate(t *testing.T) {
+	assert.NoError(t, resetDB())
+	assert.NoError(t, CreateLogTable(db))
+
+	assert.NoError(t, Migrate(
+		db,
+		Migrations{
+			"auth": {
+				{
+					Up: `
+						create table users
+						(
+							id       serial primary key,
+							username varchar(255) not null
+						)
+						`,
+					Description: "create user table",
+				},
+			},
+			"billing": {
+				{
+					Up: `
+						create table orders
+						(
+						    id          serial primary key,
+						    user_id     integer references users (id) not null,
+						    total_gross decimal(12, 2)                not null
+						)
+						`,
+					Description: "create orders table",
+				},
+			},
+		},
+		RepoOrder{"auth", "billing"},
+	))
 }
 
 func resetDB() error {

@@ -51,3 +51,11 @@ func TestFetchLastMigrationSerial(t *testing.T) {
 		assert.Equal(t, 1, serial)
 	})
 }
+
+func TestFetchLastMigrationIndexes(t *testing.T) {
+	tx, err := db.Beginx()
+	assert.NoError(t, err)
+
+	_, err = fetchLastMigrationIndexes(tx)
+	assert.NoError(t, err)
+}

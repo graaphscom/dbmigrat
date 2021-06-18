@@ -29,35 +29,40 @@ func migrate(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder) error {
 		return err
 	}
 	migrationSerial := lastMigrationSerial + 1
-	fmt.Println(migrationSerial)
 
-	var dest []struct {
-		idx  int
-		repo string
-	}
-	err = tx.Select(&dest, `select max(idx) as idx, repo from dbmigrat_log group by repo`)
+	lastMigrationIndexes, err := fetchLastMigrationIndexes(tx)
 	if err != nil {
 		return err
 	}
-	repoToMaxIdx := map[string]int{}
-	for _, res := range dest {
-		repoToMaxIdx[res.repo] = res.idx
-	}
 
-	for _, repo := range repoOrder {
-		repoMigrations, ok := migrations[repo]
+	for _, orderedRepo := range repoOrder {
+		repoMigrations, ok := migrations[orderedRepo]
 		if !ok {
 			continue
 		}
-		maxIdx, ok := repoToMaxIdx[string(repo)]
+		lastMigrationIdx, ok := lastMigrationIndexes[orderedRepo]
 		if !ok {
-			maxIdx = -1
+			lastMigrationIdx = -1
 		}
-		if len(repoMigrations) > maxIdx {
+		if len(repoMigrations) <= lastMigrationIdx+1 {
 			continue
 		}
 
-		_, err = tx.Exec(repoMigrations[maxIdx+1].Up)
+		var logs []migrationLog
+		for i, migrationToRun := range repoMigrations[lastMigrationIdx+1:] {
+			_, err = tx.Exec(migrationToRun.Up)
+			if err != nil {
+				return err
+			}
+			logs = append(logs, migrationLog{
+				Idx:             lastMigrationIdx + 1 + i,
+				Repo:            orderedRepo,
+				MigrationSerial: migrationSerial,
+				Checksum:        sha1Checksum(migrationToRun.Up),
+				Description:     migrationToRun.Description,
+			})
+		}
+		err = insertLogs(tx, logs)
 		if err != nil {
 			return err
 		}
@@ -71,7 +76,6 @@ type Migrations map[Repo][]Migration
 type Migration struct {
 	Description string
 	Up          string
-	Down        string
 }
 
 type RepoOrder []Repo

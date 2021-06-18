@@ -42,8 +42,8 @@ func fetchLastMigrationSerial(tx *sqlx.Tx) (int, error) {
 	return int(result.Int32), nil
 }
 
-func insertLogs(db *sqlx.DB, logs []migrationLog) error {
-	_, err := db.NamedExec(`
+func insertLogs(execer namedExecer, logs []migrationLog) error {
+	_, err := execer.NamedExec(`
 			insert into dbmigrat_log (idx, repo, migration_serial, checksum, applied_at, description)
 			values (:idx, :repo, :migration_serial, :checksum, default, :description)
 			`,
@@ -51,6 +51,28 @@ func insertLogs(db *sqlx.DB, logs []migrationLog) error {
 	)
 
 	return err
+}
+
+type namedExecer interface {
+	NamedExec(query string, arg interface{}) (sql.Result, error)
+}
+
+func fetchLastMigrationIndexes(tx *sqlx.Tx) (map[Repo]int, error) {
+	var dest []struct {
+		Idx  int
+		Repo Repo
+	}
+	err := tx.Select(&dest, `select max(idx) as idx, repo from dbmigrat_log group by repo`)
+	if err != nil {
+		return nil, err
+	}
+
+	repoToMaxIdx := map[Repo]int{}
+	for _, res := range dest {
+		repoToMaxIdx[res.Repo] = res.Idx
+	}
+
+	return repoToMaxIdx, nil
 }
 
 type migrationLog struct {

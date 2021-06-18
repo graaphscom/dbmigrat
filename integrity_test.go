@@ -23,7 +23,6 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			"repo2": {Migration{
 				Description: "example migration",
 				Up:          "create table foo (id integer primary key)",
-				Down:        "drop table foo",
 			}},
 		})
 		assert.NoError(t, err)
