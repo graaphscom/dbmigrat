@@ -1,3 +1,5 @@
+// Package dbmigrat allows organizing database migrations across multiple locations
+// (eg. across multiple repositories in monorepo project)
 package dbmigrat
 
 import (
