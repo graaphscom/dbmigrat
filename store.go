@@ -94,8 +94,13 @@ func fetchReverseMigrationIndexesAfterSerial(tx *sqlx.Tx, serial int) (map[Repo]
 }
 
 func deleteLogs(tx *sqlx.Tx, logs []migrationLog) error {
-	_, err := tx.NamedExec(`delete from dbmigrat_log where idx = :idx and repo = :repo`, logs)
-	return err
+	for _, log := range logs {
+		_, err := tx.Exec(`delete from dbmigrat_log where idx = $1 and repo = $2`, log.Idx, log.Repo)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type migrationLog struct {

@@ -7,7 +7,7 @@ check-fmt:
 	DIFF=$$(gofmt -d .);echo "$${DIFF}";test -z "$${DIFF}"
 
 test:
-	go test -covermode=set
+	go test -covermode=set -failfast
 
 test-ci:
 	go test -coverprofile=coverage.out -covermode=set
