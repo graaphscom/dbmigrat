@@ -12,6 +12,8 @@ import (
 var fixture embed.FS
 
 func TestReadDir(t *testing.T) {
+	_, err := ReadDir(fixture, "fixture")
+	assert.NoError(t, err)
 }
 
 func TestParseFileNames(t *testing.T) {

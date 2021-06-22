@@ -23,7 +23,7 @@ func ReadDir(embedFs embed.FS, path string) ([]Migration, error) {
 	}
 	var result []Migration
 	for i := 0; i+1 < len(parsedFileNames); i += 2 {
-		if parsedFileNames[i].idx != i || parsedFileNames[i+1].idx != i {
+		if parsedFileNames[i].idx != i/2 || parsedFileNames[i+1].idx != i/2 {
 			return nil, errWithFileName{inner: errNotSequential, fileName: parsedFileNames[i].fileName}
 		}
 		if parsedFileNames[i].description != parsedFileNames[i+1].description {
