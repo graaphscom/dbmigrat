@@ -29,14 +29,9 @@ func fetchAllMigrationLogs(selector selector) ([]migrationLog, error) {
 	return migrationLogs, err
 }
 
-type selector interface {
-	Select(dest interface{}, query string, args ...interface{}) error
-}
-
-func fetchLastMigrationSerial(tx *sqlx.Tx) (int, error) {
-	row := tx.QueryRow(`select max(migration_serial) from dbmigrat_log`)
+func fetchLastMigrationSerial(dbGetter dbGetter) (int, error) {
 	var result sql.NullInt32
-	err := row.Scan(&result)
+	err := dbGetter.Get(&result, `select max(migration_serial) from dbmigrat_log`)
 	if err != nil {
 		return -1, err
 	}
@@ -44,6 +39,10 @@ func fetchLastMigrationSerial(tx *sqlx.Tx) (int, error) {
 		return -1, nil
 	}
 	return int(result.Int32), nil
+}
+
+type dbGetter interface {
+	Get(dest interface{}, query string, args ...interface{}) error
 }
 
 func insertLogs(execer namedExecer, logs []migrationLog) error {
@@ -61,12 +60,12 @@ type namedExecer interface {
 	NamedExec(query string, arg interface{}) (sql.Result, error)
 }
 
-func fetchLastMigrationIndexes(tx *sqlx.Tx) (map[Repo]int, error) {
+func fetchLastMigrationIndexes(selector selector) (map[Repo]int, error) {
 	var dest []struct {
 		Idx  int
 		Repo Repo
 	}
-	err := tx.Select(&dest, `select max(idx) as idx, repo from dbmigrat_log group by repo`)
+	err := selector.Select(&dest, `select max(idx) as idx, repo from dbmigrat_log group by repo`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,12 +78,12 @@ func fetchLastMigrationIndexes(tx *sqlx.Tx) (map[Repo]int, error) {
 	return repoToMaxIdx, nil
 }
 
-func fetchReverseMigrationIndexesAfterSerial(tx *sqlx.Tx, serial int) (map[Repo][]int, error) {
+func fetchReverseMigrationIndexesAfterSerial(selector selector, serial int) (map[Repo][]int, error) {
 	var dest []struct {
 		Idx  int
 		Repo Repo
 	}
-	err := tx.Select(&dest, `select idx, repo from dbmigrat_log where migration_serial > $1 order by idx desc`, serial)
+	err := selector.Select(&dest, `select idx, repo from dbmigrat_log where migration_serial > $1 order by idx desc`, serial)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +94,10 @@ func fetchReverseMigrationIndexesAfterSerial(tx *sqlx.Tx, serial int) (map[Repo]
 	}
 
 	return repoToReverseMigrationIndexes, nil
+}
+
+type selector interface {
+	Select(dest interface{}, query string, args ...interface{}) error
 }
 
 func deleteLogs(tx *sqlx.Tx, logs []migrationLog) error {

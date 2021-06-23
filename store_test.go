@@ -17,64 +17,60 @@ func TestFetchLastMigrationSerial(t *testing.T) {
 	// # Create empty migrations log
 	assert.NoError(t, resetDB())
 	assert.NoError(t, CreateLogTable(db))
-	tx, _ := db.Beginx()
-	defer tx.Commit()
 
 	t.Run("Empty migrations log returns serial -1, no errors", func(t *testing.T) {
-		serial, err := fetchLastMigrationSerial(tx)
+		serial, err := fetchLastMigrationSerial(db)
 		assert.NoError(t, err)
 		assert.Equal(t, -1, serial)
 	})
 
 	t.Run("Migrations log with one migration returns serial 0, no errors", func(t *testing.T) {
-		assert.NoError(t, insertLogs(tx, []migrationLog{{
+		assert.NoError(t, insertLogs(db, []migrationLog{{
 			Idx:             0,
 			Repo:            "foo",
 			MigrationSerial: 0,
 			Checksum:        "",
 			Description:     "",
 		}}))
-		serial, err := fetchLastMigrationSerial(tx)
+		serial, err := fetchLastMigrationSerial(db)
 		assert.NoError(t, err)
 		assert.Equal(t, 0, serial)
 	})
 
 	t.Run("Migrations log with two migrations returns serial 1, no errors", func(t *testing.T) {
-		assert.NoError(t, insertLogs(tx, []migrationLog{{
+		assert.NoError(t, insertLogs(db, []migrationLog{{
 			Idx:             1,
 			Repo:            "foo",
 			MigrationSerial: 1,
 			Checksum:        "",
 			Description:     "",
 		}}))
-		serial, err := fetchLastMigrationSerial(tx)
+		serial, err := fetchLastMigrationSerial(db)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, serial)
 	})
 }
 
 func TestFetchLastMigrationIndexes(t *testing.T) {
-	tx, _ := db.Beginx()
-	defer tx.Commit()
+	assert.NoError(t, resetDB())
+	assert.NoError(t, CreateLogTable(db))
 
-	_, err := fetchLastMigrationIndexes(tx)
+	_, err := fetchLastMigrationIndexes(db)
 	assert.NoError(t, err)
 }
 
 func TestFetchReverseMigrationIndexesAfterSerial(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, CreateLogTable(db))
-	tx, _ := db.Beginx()
-	defer tx.Commit()
 
 	t.Run("Empty migrations log returns empty map, no error", func(t *testing.T) {
-		res, err := fetchReverseMigrationIndexesAfterSerial(tx, -1)
+		res, err := fetchReverseMigrationIndexesAfterSerial(db, -1)
 		assert.NoError(t, err)
 		assert.Equal(t, map[Repo][]int{}, res)
 	})
 
 	t.Run("Several repos, serials and migrations in log returns proper map, no error", func(t *testing.T) {
-		assert.NoError(t, insertLogs(tx, []migrationLog{
+		assert.NoError(t, insertLogs(db, []migrationLog{
 			{
 				Idx:             0,
 				Repo:            "foo",
@@ -112,7 +108,7 @@ func TestFetchReverseMigrationIndexesAfterSerial(t *testing.T) {
 			},
 		}))
 
-		res, err := fetchReverseMigrationIndexesAfterSerial(tx, 0)
+		res, err := fetchReverseMigrationIndexesAfterSerial(db, 0)
 		assert.NoError(t, err)
 		assert.Equal(t, map[Repo][]int{
 			"foo": {2, 1},
@@ -121,7 +117,33 @@ func TestFetchReverseMigrationIndexesAfterSerial(t *testing.T) {
 	})
 }
 
-func TestDelete(t *testing.T) {
+func TestNoDbLog(t *testing.T) {
+	assert.NoError(t, resetDB())
+	expectedErr := `pq: relation "dbmigrat_log" does not exist`
+
+	t.Run("fetchReverseMigrationIndexesAfterSerial", func(t *testing.T) {
+		_, err := fetchReverseMigrationIndexesAfterSerial(db, -100)
+		assert.EqualError(t, err, expectedErr)
+	})
+
+	t.Run("deleteLogs", func(t *testing.T) {
+		tx, _ := db.Beginx()
+		assert.EqualError(t, deleteLogs(tx, []migrationLog{{Idx: 0, Repo: "bar"}}), expectedErr)
+	})
+
+	t.Run("fetchLastMigrationIndexes", func(t *testing.T) {
+		_, err := fetchLastMigrationIndexes(db)
+		assert.EqualError(t, err, expectedErr)
+	})
+
+	t.Run("fetchLastMigrationSerial", func(t *testing.T) {
+		serial, err := fetchLastMigrationSerial(db)
+		assert.EqualError(t, err, expectedErr)
+		assert.Equal(t, -1, serial)
+	})
+}
+
+func TestDeleteLogs(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, CreateLogTable(db))
 	tx, _ := db.Beginx()
