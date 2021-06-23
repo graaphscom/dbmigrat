@@ -1,53 +1,51 @@
 package dbmigrat
 
 import (
-	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-func ReadDir(embedFs embed.FS, path string) ([]Migration, error) {
-	dirEntries, err := embedFs.ReadDir(path)
+func ReadDir(fileSys fs.FS, path string) ([]Migration, error) {
+	dirEntries, err := fs.ReadDir(fileSys, path)
 	if err != nil {
 		return nil, err
 	}
-	parsedFileNames, err := parseFileNames(dirEntries)
+	parsedFN, err := parseFileNames(dirEntries)
 	if err != nil {
 		return nil, err
 	}
 	var result []Migration
-	for i := 0; i+1 < len(parsedFileNames); i += 2 {
-		if parsedFileNames[i].idx != i/2 || parsedFileNames[i+1].idx != i/2 {
-			return nil, errWithFileName{inner: errNotSequential, fileName: parsedFileNames[i].fileName}
+	for i := 0; i+1 < len(parsedFN); i += 2 {
+		if parsedFN[i].idx != i/2 || parsedFN[i+1].idx != i/2 {
+			return nil, errWithFileName{inner: errNotSequential, fileName: parsedFN[i].fileName}
 		}
-		if parsedFileNames[i].description != parsedFileNames[i+1].description {
-			return nil, errWithFileName{inner: errDescriptionNotEqual, fileName: parsedFileNames[i].fileName}
+		if parsedFN[i].description != parsedFN[i+1].description {
+			return nil, errWithFileName{inner: errDescriptionNotEqual, fileName: parsedFN[i].fileName}
 		}
-		if parsedFileNames[i].direction == parsedFileNames[i+1].direction {
-			return nil, errWithFileName{inner: errSameDirections, fileName: parsedFileNames[i].fileName}
+		if parsedFN[i].direction == parsedFN[i+1].direction {
+			return nil, errWithFileName{inner: errSameDirections, fileName: parsedFN[i].fileName}
 		}
-		iData, err := os.ReadFile(filepath.Join(path, parsedFileNames[i].fileName))
+		iData, err := fs.ReadFile(fileSys, filepath.Join(path, parsedFN[i].fileName))
 		if err != nil {
 			return nil, err
 		}
-		iPlus1Data, err := os.ReadFile(filepath.Join(path, parsedFileNames[i+1].fileName))
+		iPlus1Data, err := fs.ReadFile(fileSys, filepath.Join(path, parsedFN[i+1].fileName))
 		if err != nil {
 			return nil, err
 		}
 		var upSql, downSql []byte
-		if parsedFileNames[i].direction == up {
+		if parsedFN[i].direction == up {
 			upSql, downSql = iData, iPlus1Data
 		} else {
 			upSql, downSql = iPlus1Data, iData
 		}
 		result = append(result, Migration{
-			Description: parsedFileNames[i].description,
+			Description: parsedFN[i].description,
 			Up:          string(upSql),
 			Down:        string(downSql),
 		})
@@ -57,7 +55,7 @@ func ReadDir(embedFs embed.FS, path string) ([]Migration, error) {
 }
 
 func parseFileNames(dirEntries []fs.DirEntry) (parsedFileNames, error) {
-	var parsedFileNames parsedFileNames
+	var parsedFN parsedFileNames
 	for _, dirEntry := range dirEntries {
 		if dirEntry.IsDir() {
 			return nil, errContainsDirectory
@@ -66,10 +64,10 @@ func parseFileNames(dirEntries []fs.DirEntry) (parsedFileNames, error) {
 		if err != nil {
 			return nil, err
 		}
-		parsedFileNames = append(parsedFileNames, parsed)
+		parsedFN = append(parsedFN, parsed)
 	}
-	sort.Sort(parsedFileNames)
-	return parsedFileNames, nil
+	sort.Sort(parsedFN)
+	return parsedFN, nil
 }
 
 func parseFileName(fileName string) (*parsedFileName, error) {
@@ -117,7 +115,7 @@ var (
 	errFileNameIdx         = errors.New("first part of migration's file name must be int")
 	errFileNameDirection   = errors.New(`third part of migration's file name must be "up" or "down" (case sensitive)`)
 	errContainsDirectory   = errors.New("migrations directory should contain files only")
-	errNotSequential       = errors.New("index in file name is not sequential")
+	errNotSequential       = errors.New("index in file name is not sequential (every migration has up and down file?)")
 	errDescriptionNotEqual = errors.New("descriptions for migration differs")
 	errSameDirections      = errors.New("migration must have up and down files")
 )

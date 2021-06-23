@@ -24,20 +24,31 @@ func TestMigrate(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, CreateLogTable(db))
 
-	assert.NoError(t, Migrate(db, migrations1, RepoOrder{"auth", "billing"}))
-	assert.NoError(t, Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"}))
+	logCount, err := Migrate(db, migrations1, RepoOrder{"auth", "billing"})
+	assert.NoError(t, err)
+	assert.Equal(t, 3, logCount)
+
+	logCount, err = Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, logCount)
 
 	// # Check if replying migrate not runs already applied migrations
-	assert.NoError(t, Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"}))
+	logCount, err = Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, logCount)
 }
 
 func TestRollback(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, CreateLogTable(db))
-	assert.NoError(t, Migrate(db, migrations1, RepoOrder{"auth", "billing", "delivery"}))
-	assert.NoError(t, Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"}))
+	_, err := Migrate(db, migrations1, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, err)
+	_, err = Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, err)
 
-	assert.NoError(t, Rollback(db, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0))
+	logCount, err := Rollback(db, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, logCount)
 }
 
 var migrations1 = Migrations{

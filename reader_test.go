@@ -3,6 +3,7 @@ package dbmigrat
 import (
 	"embed"
 	"github.com/stretchr/testify/assert"
+	"io/fs"
 	"os"
 	"testing"
 	"testing/fstest"
@@ -12,12 +13,106 @@ import (
 var fixture embed.FS
 
 func TestReadDir(t *testing.T) {
-	_, err := ReadDir(fixture, "fixture")
-	assert.NoError(t, err)
+	expected := []Migration{
+		{
+			Description: "create_user_table",
+			Up:          "create table users (id serial primary key);",
+			Down:        "drop table users;",
+		},
+		{
+			Description: "add_username_column",
+			Up:          "alter table users add column username varchar(32);",
+			Down:        "alter table users drop column username;",
+		},
+	}
+	t.Run("properly reads subdirectory", func(t *testing.T) {
+		migrations, err := ReadDir(fixture, "fixture/migrations")
+		assert.NoError(t, err)
+		assert.Equal(t, expected, migrations)
+	})
+	t.Run("properly reads current directory (path not relative to source file)", func(t *testing.T) {
+		subFs, err := fs.Sub(fixture, "fixture/migrations")
+		migrations, err := ReadDir(subFs, ".")
+		assert.NoError(t, err)
+		assert.Equal(t, expected, migrations)
+	})
+	t.Run("returns empty array when dir contains zero files", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"no_files": {Mode: os.ModeDir},
+		}
+		migrations, err := ReadDir(fileSys, "no_files")
+		assert.NoError(t, err)
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+	t.Run("returns empty array when dir contains one file", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"one_file/0.description.up": {},
+		}
+		migrations, err := ReadDir(fileSys, "one_file")
+		assert.NoError(t, err)
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+	t.Run("skips last migration with missing direction", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description.up":   {},
+			"0.description.down": {},
+			"1.description.down": {},
+		}
+		migrations, err := ReadDir(fileSys, ".")
+		assert.NoError(t, err)
+		assert.Len(t, migrations, 1)
+	})
+	t.Run("returns error when migration's direction file is missing", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description.up":   {},
+			"0.description.down": {},
+			"1.description.up":   {},
+			"2.description.up":   {},
+			"2.description.down": {},
+		}
+		migrations, err := ReadDir(fileSys, ".")
+		assert.EqualError(t, err, errWithFileName{inner: errNotSequential, fileName: "1.description.up"}.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+	t.Run("returns error when files' indexes are not incrementing by one sequence", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description.up":   {},
+			"0.description.down": {},
+			"2.description.up":   {},
+			"2.description.down": {},
+		}
+		migrations, err := ReadDir(fileSys, ".")
+		assert.EqualError(t, err, errWithFileName{inner: errNotSequential, fileName: "2.description.down"}.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+	t.Run("returns error when files' descriptions are not equal", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description_equal.up":       {},
+			"0.description_equal.down":     {},
+			"1.description.up":             {},
+			"1.description_not_equal.down": {},
+		}
+		migrations, err := ReadDir(fileSys, ".")
+		assert.EqualError(t, err, errWithFileName{inner: errDescriptionNotEqual, fileName: "1.description.up"}.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+	t.Run("returns error when migration files have same direction", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description.up":     {},
+			"0.description.down":   {},
+			"1.description.up":     {},
+			"1.description.up.sql": {},
+			"2.description.up":     {},
+			"2.description.down":   {},
+		}
+		migrations, err := ReadDir(fileSys, ".")
+		assert.EqualError(t, err, errWithFileName{inner: errSameDirections, fileName: "1.description.up"}.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+	})
 }
 
 func TestParseFileNames(t *testing.T) {
-	fs := fstest.MapFS{
+	fileSys := fstest.MapFS{
 		"contains_dir/dir":                     {Mode: os.ModeDir},
 		"invalid_file_name/0.description.up":   {},
 		"invalid_file_name/foo.description.up": {},
@@ -30,19 +125,19 @@ func TestParseFileNames(t *testing.T) {
 		assert.Empty(t, res)
 	})
 	t.Run("contains directory", func(t *testing.T) {
-		dirEntries, err := fs.ReadDir("contains_dir")
+		dirEntries, err := fileSys.ReadDir("contains_dir")
 		assert.NoError(t, err)
 		_, err = parseFileNames(dirEntries)
 		assert.EqualError(t, err, errContainsDirectory.Error())
 	})
 	t.Run("invalid file name", func(t *testing.T) {
-		dirEntries, err := fs.ReadDir("invalid_file_name")
+		dirEntries, err := fileSys.ReadDir("invalid_file_name")
 		assert.NoError(t, err)
 		_, err = parseFileNames(dirEntries)
 		assert.EqualError(t, err, errFileNameIdx.Error())
 	})
 	t.Run("sorts valid file names", func(t *testing.T) {
-		dirEntries, err := fs.ReadDir("valid")
+		dirEntries, err := fileSys.ReadDir("valid")
 		assert.NoError(t, err)
 		// if read dirEntries are sorted - mix them up
 		if string(dirEntries[0].Name()[0]) == "0" {

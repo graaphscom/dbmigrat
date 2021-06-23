@@ -12,3 +12,4 @@ jobs:
       - run: make start-db
       - run: make test-ci
       - run: bash <(curl -s https://codecov.io/bash)
+# https://proxy.golang.org/github.com/graaphscom/dbmigrat/@v/v0.0.3.info

@@ -13,22 +13,22 @@ func CheckLogTableIntegrity(db *sqlx.DB, migrations Migrations) (*IntegrityCheck
 
 	result := newIntegrityCheckResult()
 
-	for _, migrationLog := range migrationLogs {
-		repoMigrations, ok := migrations[migrationLog.Repo]
+	for _, log := range migrationLogs {
+		repoMigrations, ok := migrations[log.Repo]
 		if !ok {
 			result.IsCorrupted = true
-			result.RedundantRepos[migrationLog.Repo] = true
+			result.RedundantRepos[log.Repo] = true
 			continue
 		}
-		if migrationLog.Idx >= len(repoMigrations) {
+		if log.Idx >= len(repoMigrations) {
 			result.IsCorrupted = true
-			result.RedundantMigrations[migrationLog.Repo] = append(result.RedundantMigrations[migrationLog.Repo], migrationLog)
+			result.RedundantMigrations[log.Repo] = append(result.RedundantMigrations[log.Repo], log)
 			continue
 		}
 
-		if migrationLog.Checksum != sha1Checksum(repoMigrations[migrationLog.Idx].Up) {
+		if log.Checksum != sha1Checksum(repoMigrations[log.Idx].Up) {
 			result.IsCorrupted = true
-			result.InvalidChecksums[migrationLog.Repo] = append(result.RedundantMigrations[migrationLog.Repo], migrationLog)
+			result.InvalidChecksums[log.Repo] = append(result.RedundantMigrations[log.Repo], log)
 		}
 	}
 
