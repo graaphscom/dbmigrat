@@ -1,11 +1,7 @@
 package dbmigrat
 
-import (
-	"github.com/jmoiron/sqlx"
-)
-
-func CheckLogTableIntegrity(db *sqlx.DB, migrations Migrations) (*IntegrityCheckResult, error) {
-	migrationLogs, err := fetchAllMigrationLogs(db)
+func CheckLogTableIntegrity(selector selector, migrations Migrations) (*IntegrityCheckResult, error) {
+	migrationLogs, err := fetchAllMigrationLogs(selector)
 
 	if err != nil {
 		return nil, err

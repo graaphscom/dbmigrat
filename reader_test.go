@@ -109,6 +109,20 @@ func TestReadDir(t *testing.T) {
 		assert.EqualError(t, err, errWithFileName{inner: errSameDirections, fileName: "1.description.up"}.Error())
 		assert.Equal(t, []Migration(nil), migrations)
 	})
+	t.Run("returns error for invalid path", func(t *testing.T) {
+		fileSys := fstest.MapFS{}
+		migrations, err := ReadDir(fileSys, "non_existing_dir")
+		assert.EqualError(t, err, "open non_existing_dir: file does not exist")
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+	t.Run("returns error for invalid file name", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description.foo": {},
+		}
+		migrations, err := ReadDir(fileSys, ".")
+		assert.EqualError(t, err, errFileNameDirection.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+	})
 }
 
 func TestParseFileNames(t *testing.T) {

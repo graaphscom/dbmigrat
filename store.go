@@ -23,10 +23,14 @@ func CreateLogTable(db *sqlx.DB) error {
 	return err
 }
 
-func fetchAllMigrationLogs(db *sqlx.DB) ([]migrationLog, error) {
+func fetchAllMigrationLogs(selector selector) ([]migrationLog, error) {
 	var migrationLogs []migrationLog
-	err := db.Select(&migrationLogs, `select * from dbmigrat_log`)
+	err := selector.Select(&migrationLogs, `select * from dbmigrat_log`)
 	return migrationLogs, err
+}
+
+type selector interface {
+	Select(dest interface{}, query string, args ...interface{}) error
 }
 
 func fetchLastMigrationSerial(tx *sqlx.Tx) (int, error) {

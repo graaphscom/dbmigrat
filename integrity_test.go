@@ -1,6 +1,7 @@
 package dbmigrat
 
 import (
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 		// # Check for several migrations passed from outside
 		result, err = CheckLogTableIntegrity(db, Migrations{
 			"repo1": {},
-			"repo2": {Migration{
+			"repo2": {{
 				Description: "example migration",
 				Up:          "create table foo (id integer primary key)",
 			}},
@@ -42,11 +43,11 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 
 		result, err := CheckLogTableIntegrity(db, Migrations{
 			"repo1": {
-				Migration{Up: upSql},
-				Migration{Up: "example additional"},
+				{Up: upSql},
+				{Up: "example additional"},
 			},
 			"repo2": {},
-			"repo3": {Migration{Up: "example additional"}},
+			"repo3": {{Up: "example additional"}},
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, newIntegrityCheckResult(), result)
@@ -79,7 +80,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 
 		result, err := CheckLogTableIntegrity(db, Migrations{
 			"repo1": {
-				Migration{Up: "sql other than stored in log"},
+				{Up: "sql other than stored in log"},
 			},
 		})
 		assert.NoError(t, err)
@@ -93,4 +94,16 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			InvalidChecksums:    map[Repo][]migrationLog{"repo1": {invalidChecksum}},
 		}, result)
 	})
+
+	t.Run("db error", func(t *testing.T) {
+		res, err := CheckLogTableIntegrity(selectorMock{}, Migrations{})
+		assert.EqualError(t, err, "example error")
+		assert.Nil(t, res)
+	})
+}
+
+type selectorMock struct{}
+
+func (s selectorMock) Select(dest interface{}, query string, args ...interface{}) error {
+	return errors.New("example error")
 }
