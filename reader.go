@@ -15,7 +15,16 @@ func ReadDir(fileSys fs.FS, path string) ([]Migration, error) {
 	if err != nil {
 		return nil, err
 	}
-	parsedFN, err := parseFileNames(dirEntries)
+
+	var fileNames []string
+	for _, dirEntry := range dirEntries {
+		if dirEntry.IsDir() {
+			return nil, errContainsDirectory
+		}
+		fileNames = append(fileNames, dirEntry.Name())
+	}
+
+	parsedFN, err := parseFileNames(fileNames)
 	if err != nil {
 		return nil, err
 	}
@@ -38,29 +47,20 @@ func ReadDir(fileSys fs.FS, path string) ([]Migration, error) {
 		if err != nil {
 			return nil, err
 		}
-		var upSql, downSql []byte
-		if parsedFN[i].direction == up {
-			upSql, downSql = iData, iPlus1Data
-		} else {
-			upSql, downSql = iPlus1Data, iData
-		}
 		result = append(result, Migration{
 			Description: parsedFN[i].description,
-			Up:          string(upSql),
-			Down:        string(downSql),
+			Up:          string(iData),
+			Down:        string(iPlus1Data),
 		})
 	}
 
 	return result, nil
 }
 
-func parseFileNames(dirEntries []fs.DirEntry) (parsedFileNames, error) {
+func parseFileNames(fileNames []string) (parsedFileNames, error) {
 	var parsedFN parsedFileNames
-	for _, dirEntry := range dirEntries {
-		if dirEntry.IsDir() {
-			return nil, errContainsDirectory
-		}
-		parsed, err := parseFileName(dirEntry.Name())
+	for _, fileName := range fileNames {
+		parsed, err := parseFileName(fileName)
 		if err != nil {
 			return nil, err
 		}
@@ -90,9 +90,14 @@ func parseFileName(fileName string) (*parsedFileName, error) {
 	}, nil
 }
 
-func (a parsedFileNames) Len() int           { return len(a) }
-func (a parsedFileNames) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a parsedFileNames) Less(i, j int) bool { return a[i].idx < a[j].idx }
+func (a parsedFileNames) Len() int      { return len(a) }
+func (a parsedFileNames) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a parsedFileNames) Less(i, j int) bool {
+	if a[i].idx == a[j].idx {
+		return a[i].direction == up
+	}
+	return a[i].idx < a[j].idx
+}
 
 type parsedFileNames []*parsedFileName
 
