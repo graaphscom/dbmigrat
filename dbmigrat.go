@@ -97,8 +97,8 @@ func rollback(s store, migrations Migrations, repoOrder RepoOrder, toMigrationSe
 			continue
 		}
 		for _, migrationIdx := range reverseIndexes {
-			if len(migrations[orderedRepo]) < migrationIdx {
-				return 0, errors.New("migrations passed to Rollback func are not in sync with migrations log. You might want to run CheckLogTableIntegrity func")
+			if len(migrations[orderedRepo]) <= migrationIdx {
+				return 0, errMigrationsOutSync
 			}
 			err := s.exec(migrations[orderedRepo][migrationIdx].Down)
 			if err != nil {
@@ -134,3 +134,5 @@ type Repo string
 func sha1Checksum(data string) string {
 	return fmt.Sprintf("%x", sha1.Sum([]byte(data)))
 }
+
+var errMigrationsOutSync = errors.New("migrations passed to Rollback func are not in sync with migrations log. You might want to run CheckLogTableIntegrity func")

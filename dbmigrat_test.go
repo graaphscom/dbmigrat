@@ -1,6 +1,7 @@
 package dbmigrat
 
 import (
+	"github.com/hashicorp/go-multierror"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
@@ -44,33 +45,25 @@ func TestMigrate(t *testing.T) {
 func TestMigrateError(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, pgStore.CreateLogTable())
-	caseTable := []struct {
-		name      string
-		storeMock store
-	}{
-		{name: "tx begin fail", storeMock: errorStoreMock{wrapped: pgStore, errBegin: true}},
-		{name: "fetchLastMigrationSerial fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchLastMigrationSerial: true}},
-		{name: "fetchLastMigrationIndexes fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchLastMigrationIndexes: true}},
-		{name: "exec fail", storeMock: errorStoreMock{wrapped: pgStore, errExec: true}},
-		{name: "insertLogs fail", storeMock: errorStoreMock{wrapped: pgStore, errInsertLogs: true}},
+	caseTable := caseTable{
+		{name: "tx begin fail", storeMock: errorStoreMock{wrapped: pgStore, errBegin: true}, errExpected: exampleErr},
+		{name: "fetchLastMigrationSerial fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchLastMigrationSerial: true}, errExpected: multierror.Append(exampleErr)},
+		{name: "fetchLastMigrationIndexes fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchLastMigrationIndexes: true}, errExpected: multierror.Append(exampleErr)},
+		{name: "exec fail", storeMock: errorStoreMock{wrapped: pgStore, errExec: true}, errExpected: multierror.Append(exampleErr)},
+		{name: "insertLogs fail", storeMock: errorStoreMock{wrapped: pgStore, errInsertLogs: true}, errExpected: multierror.Append(exampleErr)},
 	}
 
 	for _, testCase := range caseTable {
 		t.Run(testCase.name, func(t *testing.T) {
 			res, err := Migrate(testCase.storeMock, migrations1, RepoOrder{"auth", "billing"})
-			assert.Error(t, err, exampleErr.Error())
+			assert.EqualError(t, err, testCase.errExpected.Error())
 			assert.Equal(t, 0, res)
 		})
 	}
 }
 
 func TestRollback(t *testing.T) {
-	assert.NoError(t, resetDB())
-	assert.NoError(t, pgStore.CreateLogTable())
-	_, err := Migrate(pgStore, migrations1, RepoOrder{"auth", "billing", "delivery"})
-	assert.NoError(t, err)
-	_, err = Migrate(pgStore, migrations2, RepoOrder{"auth", "billing", "delivery"})
-	assert.NoError(t, err)
+	beforeRollback(t)
 
 	logCount, err := Rollback(pgStore, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
 	assert.NoError(t, err)
@@ -78,30 +71,37 @@ func TestRollback(t *testing.T) {
 }
 
 func TestRollbackError(t *testing.T) {
+	beforeRollback(t)
+
+	caseTable := caseTable{
+		{name: "tx begin fail", storeMock: errorStoreMock{wrapped: pgStore, errBegin: true}, errExpected: exampleErr},
+		{name: "fetchReverseMigrationIndexesAfterSerial fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchReverseMigrationIndexesAfterSerial: true}, errExpected: multierror.Append(exampleErr)},
+		{name: "exec fail", storeMock: errorStoreMock{wrapped: pgStore, errExec: true}, errExpected: multierror.Append(exampleErr)},
+		{name: "deleteLogs fail", storeMock: errorStoreMock{wrapped: pgStore, errDeleteLogs: true}, errExpected: multierror.Append(exampleErr)},
+	}
+
+	for _, testCase := range caseTable {
+		t.Run(testCase.name, func(t *testing.T) {
+			logCount, err := Rollback(testCase.storeMock, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
+			assert.EqualError(t, err, testCase.errExpected.Error())
+			assert.Equal(t, 0, logCount)
+		})
+	}
+
+	t.Run("too less migrations provided", func(t *testing.T) {
+		logCount, err := Rollback(pgStore, migrations1, RepoOrder{"delivery", "billing", "auth"}, 0)
+		assert.EqualError(t, err, multierror.Append(errMigrationsOutSync).Error())
+		assert.Equal(t, 0, logCount)
+	})
+}
+
+func beforeRollback(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, pgStore.CreateLogTable())
 	_, err := Migrate(pgStore, migrations1, RepoOrder{"auth", "billing", "delivery"})
 	assert.NoError(t, err)
 	_, err = Migrate(pgStore, migrations2, RepoOrder{"auth", "billing", "delivery"})
 	assert.NoError(t, err)
-
-	caseTable := []struct {
-		name      string
-		storeMock store
-	}{
-		{name: "tx begin fail", storeMock: errorStoreMock{wrapped: pgStore, errBegin: true}},
-		{name: "fetchReverseMigrationIndexesAfterSerial fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchReverseMigrationIndexesAfterSerial: true}},
-		{name: "exec fail", storeMock: errorStoreMock{wrapped: pgStore, errExec: true}},
-		{name: "deleteLogs fail", storeMock: errorStoreMock{wrapped: pgStore, errDeleteLogs: true}},
-	}
-
-	for _, testCase := range caseTable {
-		t.Run(testCase.name, func(t *testing.T) {
-			logCount, err := Rollback(testCase.storeMock, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
-			assert.Error(t, err, exampleErr.Error())
-			assert.Equal(t, 0, logCount)
-		})
-	}
 }
 
 var migrations1 = Migrations{
@@ -122,6 +122,12 @@ var migrations2 = Migrations{
 	"delivery": {
 		{Up: `create table delivery_status (status integer, order_id integer references orders(id) primary key)`, Down: `drop table delivery_status`, Description: `create delivery status table`},
 	},
+}
+
+type caseTable []struct {
+	name        string
+	storeMock   store
+	errExpected error
 }
 
 func resetDB() error {
