@@ -41,6 +41,29 @@ func TestMigrate(t *testing.T) {
 	assert.Equal(t, 0, logCount)
 }
 
+func TestMigrateError(t *testing.T) {
+	assert.NoError(t, resetDB())
+	assert.NoError(t, pgStore.CreateLogTable())
+	caseTable := []struct {
+		name      string
+		storeMock store
+	}{
+		{name: "tx begin fail", storeMock: errorStoreMock{wrapped: pgStore, errBegin: true}},
+		{name: "fetchLastMigrationSerial fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchLastMigrationSerial: true}},
+		{name: "fetchLastMigrationIndexes fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchLastMigrationIndexes: true}},
+		{name: "exec fail", storeMock: errorStoreMock{wrapped: pgStore, errExec: true}},
+		{name: "insertLogs fail", storeMock: errorStoreMock{wrapped: pgStore, errInsertLogs: true}},
+	}
+
+	for _, testCase := range caseTable {
+		t.Run(testCase.name, func(t *testing.T) {
+			res, err := Migrate(testCase.storeMock, migrations1, RepoOrder{"auth", "billing"})
+			assert.Error(t, err, exampleErr.Error())
+			assert.Equal(t, 0, res)
+		})
+	}
+}
+
 func TestRollback(t *testing.T) {
 	assert.NoError(t, resetDB())
 	assert.NoError(t, pgStore.CreateLogTable())
@@ -52,6 +75,33 @@ func TestRollback(t *testing.T) {
 	logCount, err := Rollback(pgStore, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, logCount)
+}
+
+func TestRollbackError(t *testing.T) {
+	assert.NoError(t, resetDB())
+	assert.NoError(t, pgStore.CreateLogTable())
+	_, err := Migrate(pgStore, migrations1, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, err)
+	_, err = Migrate(pgStore, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, err)
+
+	caseTable := []struct {
+		name      string
+		storeMock store
+	}{
+		{name: "tx begin fail", storeMock: errorStoreMock{wrapped: pgStore, errBegin: true}},
+		{name: "fetchReverseMigrationIndexesAfterSerial fail", storeMock: errorStoreMock{wrapped: pgStore, errFetchReverseMigrationIndexesAfterSerial: true}},
+		{name: "exec fail", storeMock: errorStoreMock{wrapped: pgStore, errExec: true}},
+		{name: "deleteLogs fail", storeMock: errorStoreMock{wrapped: pgStore, errDeleteLogs: true}},
+	}
+
+	for _, testCase := range caseTable {
+		t.Run(testCase.name, func(t *testing.T) {
+			logCount, err := Rollback(testCase.storeMock, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
+			assert.Error(t, err, exampleErr.Error())
+			assert.Equal(t, 0, logCount)
+		})
+	}
 }
 
 var migrations1 = Migrations{
