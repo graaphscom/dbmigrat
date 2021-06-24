@@ -1,7 +1,7 @@
 package dbmigrat
 
-func CheckLogTableIntegrity(selector selector, migrations Migrations) (*IntegrityCheckResult, error) {
-	migrationLogs, err := fetchAllMigrationLogs(selector)
+func CheckLogTableIntegrity(s store, migrations Migrations) (*IntegrityCheckResult, error) {
+	migrationLogs, err := s.fetchAllMigrationLogs()
 
 	if err != nil {
 		return nil, err

@@ -1,25 +1,24 @@
 package dbmigrat
 
 import (
-	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestCheckLogTableIntegrity(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
 
 	t.Run("Empty migrations log is not corrupted", func(t *testing.T) {
 		assert.NoError(t, truncateLogTable())
 
 		// # Check for no migrations passed from outside
-		result, err := CheckLogTableIntegrity(db, Migrations{})
+		result, err := CheckLogTableIntegrity(pgStore, Migrations{})
 		assert.NoError(t, err)
 		assert.Equal(t, newIntegrityCheckResult(), result)
 
 		// # Check for several migrations passed from outside
-		result, err = CheckLogTableIntegrity(db, Migrations{
+		result, err = CheckLogTableIntegrity(pgStore, Migrations{
 			"repo1": {},
 			"repo2": {{
 				Description: "example migration",
@@ -33,7 +32,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 	t.Run("Not corrupted log with one migration and extra migrations passed from outside", func(t *testing.T) {
 		assert.NoError(t, truncateLogTable())
 		upSql := "create table foo (id integer primary key)"
-		assert.NoError(t, insertLogs(db, []migrationLog{{
+		assert.NoError(t, pgStore.insertLogs([]migrationLog{{
 			Idx:             0,
 			Repo:            "repo1",
 			MigrationSerial: 0,
@@ -41,7 +40,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			Description:     "example migration",
 		}}))
 
-		result, err := CheckLogTableIntegrity(db, Migrations{
+		result, err := CheckLogTableIntegrity(pgStore, Migrations{
 			"repo1": {
 				{Up: upSql},
 				{Up: "example additional"},
@@ -76,9 +75,9 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			Checksum:        sha1Checksum("example"),
 			Description:     "example migration redundant repo",
 		}
-		assert.NoError(t, insertLogs(db, []migrationLog{invalidChecksum, redundantMigration, redundantRepo}))
+		assert.NoError(t, pgStore.insertLogs([]migrationLog{invalidChecksum, redundantMigration, redundantRepo}))
 
-		result, err := CheckLogTableIntegrity(db, Migrations{
+		result, err := CheckLogTableIntegrity(pgStore, Migrations{
 			"repo1": {
 				{Up: "sql other than stored in log"},
 			},
@@ -96,14 +95,8 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 	})
 
 	t.Run("db error", func(t *testing.T) {
-		res, err := CheckLogTableIntegrity(selectorMock{}, Migrations{})
+		res, err := CheckLogTableIntegrity(errorStoreMock{}, Migrations{})
 		assert.EqualError(t, err, "example error")
 		assert.Nil(t, res)
 	})
-}
-
-type selectorMock struct{}
-
-func (s selectorMock) Select(dest interface{}, query string, args ...interface{}) error {
-	return errors.New("example error")
 }

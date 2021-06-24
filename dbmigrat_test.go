@@ -11,9 +11,12 @@ import (
 
 var db *sqlx.DB
 
+var pgStore *PostgresStore
+
 func TestMain(m *testing.M) {
 	_db, err := sqlx.Open("postgres", "postgres://dbmigrat:dbmigrat@localhost:5432/dbmigrat?sslmode=disable")
 	db = _db
+	pgStore = &PostgresStore{db: db}
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -22,31 +25,31 @@ func TestMain(m *testing.M) {
 
 func TestMigrate(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
 
-	logCount, err := Migrate(db, migrations1, RepoOrder{"auth", "billing"})
+	logCount, err := Migrate(pgStore, migrations1, RepoOrder{"auth", "billing"})
 	assert.NoError(t, err)
 	assert.Equal(t, 3, logCount)
 
-	logCount, err = Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	logCount, err = Migrate(pgStore, migrations2, RepoOrder{"auth", "billing", "delivery"})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, logCount)
 
 	// # Check if replying migrate not runs already applied migrations
-	logCount, err = Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	logCount, err = Migrate(pgStore, migrations2, RepoOrder{"auth", "billing", "delivery"})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, logCount)
 }
 
 func TestRollback(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
-	_, err := Migrate(db, migrations1, RepoOrder{"auth", "billing", "delivery"})
+	assert.NoError(t, pgStore.CreateLogTable())
+	_, err := Migrate(pgStore, migrations1, RepoOrder{"auth", "billing", "delivery"})
 	assert.NoError(t, err)
-	_, err = Migrate(db, migrations2, RepoOrder{"auth", "billing", "delivery"})
+	_, err = Migrate(pgStore, migrations2, RepoOrder{"auth", "billing", "delivery"})
 	assert.NoError(t, err)
 
-	logCount, err := Rollback(db, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
+	logCount, err := Rollback(pgStore, migrations2, RepoOrder{"delivery", "billing", "auth"}, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, logCount)
 }

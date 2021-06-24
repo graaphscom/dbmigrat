@@ -1,6 +1,7 @@
 package dbmigrat
 
 import (
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -8,44 +9,44 @@ import (
 func TestCreateLogTable(t *testing.T) {
 	assert.NoError(t, resetDB())
 	// # Create table when it not exists
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
 	// # Try to create table when it exists
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
 }
 
 func TestFetchLastMigrationSerial(t *testing.T) {
 	// # Create empty migrations log
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
 
 	t.Run("Empty migrations log returns serial -1, no errors", func(t *testing.T) {
-		serial, err := fetchLastMigrationSerial(db)
+		serial, err := pgStore.fetchLastMigrationSerial()
 		assert.NoError(t, err)
 		assert.Equal(t, -1, serial)
 	})
 
 	t.Run("Migrations log with one migration returns serial 0, no errors", func(t *testing.T) {
-		assert.NoError(t, insertLogs(db, []migrationLog{{
+		assert.NoError(t, pgStore.insertLogs([]migrationLog{{
 			Idx:             0,
 			Repo:            "foo",
 			MigrationSerial: 0,
 			Checksum:        "",
 			Description:     "",
 		}}))
-		serial, err := fetchLastMigrationSerial(db)
+		serial, err := pgStore.fetchLastMigrationSerial()
 		assert.NoError(t, err)
 		assert.Equal(t, 0, serial)
 	})
 
 	t.Run("Migrations log with two migrations returns serial 1, no errors", func(t *testing.T) {
-		assert.NoError(t, insertLogs(db, []migrationLog{{
+		assert.NoError(t, pgStore.insertLogs([]migrationLog{{
 			Idx:             1,
 			Repo:            "foo",
 			MigrationSerial: 1,
 			Checksum:        "",
 			Description:     "",
 		}}))
-		serial, err := fetchLastMigrationSerial(db)
+		serial, err := pgStore.fetchLastMigrationSerial()
 		assert.NoError(t, err)
 		assert.Equal(t, 1, serial)
 	})
@@ -53,62 +54,28 @@ func TestFetchLastMigrationSerial(t *testing.T) {
 
 func TestFetchLastMigrationIndexes(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
+	assert.NoError(t, pgStore.insertLogs(complexMigrationLog))
 
-	_, err := fetchLastMigrationIndexes(db)
+	res, err := pgStore.fetchLastMigrationIndexes()
 	assert.NoError(t, err)
+	assert.Equal(t, map[Repo]int{"foo": 2, "bar": 1}, res)
 }
 
 func TestFetchReverseMigrationIndexesAfterSerial(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
+	assert.NoError(t, pgStore.CreateLogTable())
 
 	t.Run("Empty migrations log returns empty map, no error", func(t *testing.T) {
-		res, err := fetchReverseMigrationIndexesAfterSerial(db, -1)
+		res, err := pgStore.fetchReverseMigrationIndexesAfterSerial(-1)
 		assert.NoError(t, err)
 		assert.Equal(t, map[Repo][]int{}, res)
 	})
 
 	t.Run("Several repos, serials and migrations in log returns proper map, no error", func(t *testing.T) {
-		assert.NoError(t, insertLogs(db, []migrationLog{
-			{
-				Idx:             0,
-				Repo:            "foo",
-				MigrationSerial: 0,
-				Checksum:        "",
-				Description:     "",
-			},
-			{
-				Idx:             0,
-				Repo:            "bar",
-				MigrationSerial: 0,
-				Checksum:        "",
-				Description:     "",
-			},
-			{
-				Idx:             1,
-				Repo:            "foo",
-				MigrationSerial: 1,
-				Checksum:        "",
-				Description:     "",
-			},
-			{
-				Idx:             2,
-				Repo:            "foo",
-				MigrationSerial: 1,
-				Checksum:        "",
-				Description:     "",
-			},
-			{
-				Idx:             1,
-				Repo:            "bar",
-				MigrationSerial: 1,
-				Checksum:        "",
-				Description:     "",
-			},
-		}))
+		assert.NoError(t, pgStore.insertLogs(complexMigrationLog))
 
-		res, err := fetchReverseMigrationIndexesAfterSerial(db, 0)
+		res, err := pgStore.fetchReverseMigrationIndexesAfterSerial(0)
 		assert.NoError(t, err)
 		assert.Equal(t, map[Repo][]int{
 			"foo": {2, 1},
@@ -117,27 +84,64 @@ func TestFetchReverseMigrationIndexesAfterSerial(t *testing.T) {
 	})
 }
 
+var complexMigrationLog = []migrationLog{
+	{
+		Idx:             0,
+		Repo:            "foo",
+		MigrationSerial: 0,
+		Checksum:        "",
+		Description:     "",
+	},
+	{
+		Idx:             0,
+		Repo:            "bar",
+		MigrationSerial: 0,
+		Checksum:        "",
+		Description:     "",
+	},
+	{
+		Idx:             1,
+		Repo:            "foo",
+		MigrationSerial: 1,
+		Checksum:        "",
+		Description:     "",
+	},
+	{
+		Idx:             2,
+		Repo:            "foo",
+		MigrationSerial: 1,
+		Checksum:        "",
+		Description:     "",
+	},
+	{
+		Idx:             1,
+		Repo:            "bar",
+		MigrationSerial: 1,
+		Checksum:        "",
+		Description:     "",
+	},
+}
+
 func TestNoDbLog(t *testing.T) {
 	assert.NoError(t, resetDB())
 	expectedErr := `pq: relation "dbmigrat_log" does not exist`
 
 	t.Run("fetchReverseMigrationIndexesAfterSerial", func(t *testing.T) {
-		_, err := fetchReverseMigrationIndexesAfterSerial(db, -100)
+		_, err := pgStore.fetchReverseMigrationIndexesAfterSerial(-100)
 		assert.EqualError(t, err, expectedErr)
 	})
 
 	t.Run("deleteLogs", func(t *testing.T) {
-		tx, _ := db.Beginx()
-		assert.EqualError(t, deleteLogs(tx, []migrationLog{{Idx: 0, Repo: "bar"}}), expectedErr)
+		assert.EqualError(t, pgStore.deleteLogs([]migrationLog{{Idx: 0, Repo: "bar"}}), expectedErr)
 	})
 
 	t.Run("fetchLastMigrationIndexes", func(t *testing.T) {
-		_, err := fetchLastMigrationIndexes(db)
+		_, err := pgStore.fetchLastMigrationIndexes()
 		assert.EqualError(t, err, expectedErr)
 	})
 
 	t.Run("fetchLastMigrationSerial", func(t *testing.T) {
-		serial, err := fetchLastMigrationSerial(db)
+		serial, err := pgStore.fetchLastMigrationSerial()
 		assert.EqualError(t, err, expectedErr)
 		assert.Equal(t, -1, serial)
 	})
@@ -145,11 +149,9 @@ func TestNoDbLog(t *testing.T) {
 
 func TestDeleteLogs(t *testing.T) {
 	assert.NoError(t, resetDB())
-	assert.NoError(t, CreateLogTable(db))
-	tx, _ := db.Beginx()
-	defer tx.Commit()
+	assert.NoError(t, pgStore.CreateLogTable())
 
-	assert.NoError(t, insertLogs(tx, []migrationLog{
+	assert.NoError(t, pgStore.insertLogs([]migrationLog{
 		{
 			Idx:             0,
 			Repo:            "foo",
@@ -165,10 +167,28 @@ func TestDeleteLogs(t *testing.T) {
 			Description:     "",
 		},
 	}))
-	assert.NoError(t, deleteLogs(tx, []migrationLog{{Idx: 0, Repo: "bar"}}))
+	assert.NoError(t, pgStore.deleteLogs([]migrationLog{{Idx: 0, Repo: "bar"}}))
 	var migrationLogs []migrationLog
-	assert.NoError(t, tx.Select(&migrationLogs, `select * from dbmigrat_log`))
+	assert.NoError(t, db.Select(&migrationLogs, `select * from dbmigrat_log`))
 	assert.Len(t, migrationLogs, 1)
 	assert.Equal(t, 0, migrationLogs[0].Idx)
 	assert.Equal(t, Repo("foo"), migrationLogs[0].Repo)
 }
+
+func (s errorStoreMock) CreateLogTable() error                            { return exampleErr }
+func (s errorStoreMock) fetchAllMigrationLogs() ([]migrationLog, error)   { return nil, exampleErr }
+func (s errorStoreMock) fetchLastMigrationSerial() (int, error)           { return 0, exampleErr }
+func (s errorStoreMock) insertLogs(logs []migrationLog) error             { return exampleErr }
+func (s errorStoreMock) fetchLastMigrationIndexes() (map[Repo]int, error) { return nil, exampleErr }
+func (s errorStoreMock) fetchReverseMigrationIndexesAfterSerial(serial int) (map[Repo][]int, error) {
+	return nil, exampleErr
+}
+func (s errorStoreMock) deleteLogs(logs []migrationLog) error { return exampleErr }
+func (s errorStoreMock) begin() error                         { return exampleErr }
+func (s errorStoreMock) rollback() error                      { return exampleErr }
+func (s errorStoreMock) commit() error                        { return exampleErr }
+func (s errorStoreMock) exec(query string) error              { return exampleErr }
+
+var exampleErr = errors.New("example error")
+
+type errorStoreMock struct{}

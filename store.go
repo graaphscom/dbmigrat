@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func CreateLogTable(db *sqlx.DB) error {
-	_, err := db.Exec(`
+func (s PostgresStore) CreateLogTable() error {
+	_, err := s.getDbAccessor().Exec(`
 		create table if not exists dbmigrat_log
 		(
 		    idx              integer      not null,
@@ -23,15 +23,15 @@ func CreateLogTable(db *sqlx.DB) error {
 	return err
 }
 
-func fetchAllMigrationLogs(selector selector) ([]migrationLog, error) {
+func (s PostgresStore) fetchAllMigrationLogs() ([]migrationLog, error) {
 	var migrationLogs []migrationLog
-	err := selector.Select(&migrationLogs, `select * from dbmigrat_log`)
+	err := s.getDbAccessor().Select(&migrationLogs, `select * from dbmigrat_log`)
 	return migrationLogs, err
 }
 
-func fetchLastMigrationSerial(dbGetter dbGetter) (int, error) {
+func (s PostgresStore) fetchLastMigrationSerial() (int, error) {
 	var result sql.NullInt32
-	err := dbGetter.Get(&result, `select max(migration_serial) from dbmigrat_log`)
+	err := s.getDbAccessor().Get(&result, `select max(migration_serial) from dbmigrat_log`)
 	if err != nil {
 		return -1, err
 	}
@@ -41,12 +41,8 @@ func fetchLastMigrationSerial(dbGetter dbGetter) (int, error) {
 	return int(result.Int32), nil
 }
 
-type dbGetter interface {
-	Get(dest interface{}, query string, args ...interface{}) error
-}
-
-func insertLogs(execer namedExecer, logs []migrationLog) error {
-	_, err := execer.NamedExec(`
+func (s PostgresStore) insertLogs(logs []migrationLog) error {
+	_, err := s.getDbAccessor().NamedExec(`
 			insert into dbmigrat_log (idx, repo, migration_serial, checksum, applied_at, description)
 			values (:idx, :repo, :migration_serial, :checksum, default, :description)
 			`,
@@ -56,16 +52,12 @@ func insertLogs(execer namedExecer, logs []migrationLog) error {
 	return err
 }
 
-type namedExecer interface {
-	NamedExec(query string, arg interface{}) (sql.Result, error)
-}
-
-func fetchLastMigrationIndexes(selector selector) (map[Repo]int, error) {
+func (s PostgresStore) fetchLastMigrationIndexes() (map[Repo]int, error) {
 	var dest []struct {
 		Idx  int
 		Repo Repo
 	}
-	err := selector.Select(&dest, `select max(idx) as idx, repo from dbmigrat_log group by repo`)
+	err := s.getDbAccessor().Select(&dest, `select max(idx) as idx, repo from dbmigrat_log group by repo`)
 	if err != nil {
 		return nil, err
 	}
@@ -78,12 +70,12 @@ func fetchLastMigrationIndexes(selector selector) (map[Repo]int, error) {
 	return repoToMaxIdx, nil
 }
 
-func fetchReverseMigrationIndexesAfterSerial(selector selector, serial int) (map[Repo][]int, error) {
+func (s PostgresStore) fetchReverseMigrationIndexesAfterSerial(serial int) (map[Repo][]int, error) {
 	var dest []struct {
 		Idx  int
 		Repo Repo
 	}
-	err := selector.Select(&dest, `select idx, repo from dbmigrat_log where migration_serial > $1 order by idx desc`, serial)
+	err := s.getDbAccessor().Select(&dest, `select idx, repo from dbmigrat_log where migration_serial > $1 order by idx desc`, serial)
 	if err != nil {
 		return nil, err
 	}
@@ -96,18 +88,70 @@ func fetchReverseMigrationIndexesAfterSerial(selector selector, serial int) (map
 	return repoToReverseMigrationIndexes, nil
 }
 
-type selector interface {
-	Select(dest interface{}, query string, args ...interface{}) error
-}
-
-func deleteLogs(tx *sqlx.Tx, logs []migrationLog) error {
+func (s PostgresStore) deleteLogs(logs []migrationLog) error {
 	for _, log := range logs {
-		_, err := tx.Exec(`delete from dbmigrat_log where idx = $1 and repo = $2`, log.Idx, log.Repo)
+		_, err := s.getDbAccessor().Exec(`delete from dbmigrat_log where idx = $1 and repo = $2`, log.Idx, log.Repo)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *PostgresStore) begin() error {
+	tx, err := s.db.Beginx()
+	s.tx = tx
+	return err
+}
+
+func (s *PostgresStore) rollback() error {
+	err := s.tx.Rollback()
+	s.tx = nil
+	return err
+}
+
+func (s *PostgresStore) commit() error {
+	err := s.tx.Commit()
+	s.tx = nil
+	return err
+}
+
+func (s PostgresStore) exec(query string) error {
+	_, err := s.getDbAccessor().Exec(query)
+	return err
+}
+
+func (s PostgresStore) getDbAccessor() dbAccessor {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db
+}
+
+type dbAccessor interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	NamedExec(query string, arg interface{}) (sql.Result, error)
+	Select(dest interface{}, query string, args ...interface{}) error
+	Get(dest interface{}, query string, args ...interface{}) error
+}
+
+type PostgresStore struct {
+	db *sqlx.DB
+	tx *sqlx.Tx
+}
+
+type store interface {
+	CreateLogTable() error
+	fetchAllMigrationLogs() ([]migrationLog, error)
+	fetchLastMigrationSerial() (int, error)
+	insertLogs(logs []migrationLog) error
+	fetchLastMigrationIndexes() (map[Repo]int, error)
+	fetchReverseMigrationIndexesAfterSerial(serial int) (map[Repo][]int, error)
+	deleteLogs(logs []migrationLog) error
+	begin() error
+	rollback() error
+	commit() error
+	exec(query string) error
 }
 
 type migrationLog struct {

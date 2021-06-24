@@ -7,33 +7,30 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hashicorp/go-multierror"
-	"github.com/jmoiron/sqlx"
 )
 
-func Migrate(db *sqlx.DB, migrations Migrations, repoOrder RepoOrder) (int, error) {
-	var err error
-
-	tx, err := db.Beginx()
+func Migrate(s store, migrations Migrations, repoOrder RepoOrder) (int, error) {
+	err := s.begin()
 	if err != nil {
 		return 0, err
 	}
 
-	logCount, err := migrate(tx, migrations, repoOrder)
+	logCount, err := migrate(s, migrations, repoOrder)
 	if err != nil {
-		return 0, multierror.Append(err, tx.Rollback())
+		return 0, multierror.Append(err, s.rollback())
 	}
 
-	return logCount, tx.Commit()
+	return logCount, s.commit()
 }
 
-func migrate(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder) (int, error) {
-	lastMigrationSerial, err := fetchLastMigrationSerial(tx)
+func migrate(s store, migrations Migrations, repoOrder RepoOrder) (int, error) {
+	lastMigrationSerial, err := s.fetchLastMigrationSerial()
 	if err != nil {
 		return 0, err
 	}
 	migrationSerial := lastMigrationSerial + 1
 
-	lastMigrationIndexes, err := fetchLastMigrationIndexes(tx)
+	lastMigrationIndexes, err := s.fetchLastMigrationIndexes()
 	if err != nil {
 		return 0, err
 	}
@@ -54,7 +51,7 @@ func migrate(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder) (int, erro
 
 		var logs []migrationLog
 		for i, migrationToRun := range repoMigrations[lastMigrationIdx+1:] {
-			_, err = tx.Exec(migrationToRun.Up)
+			err = s.exec(migrationToRun.Up)
 			if err != nil {
 				return 0, err
 			}
@@ -66,7 +63,7 @@ func migrate(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder) (int, erro
 				Description:     migrationToRun.Description,
 			})
 		}
-		err = insertLogs(tx, logs)
+		err = s.insertLogs(logs)
 		if err != nil {
 			return 0, err
 		}
@@ -76,20 +73,20 @@ func migrate(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder) (int, erro
 	return insertedLogsCount, nil
 }
 
-func Rollback(db *sqlx.DB, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) (int, error) {
-	tx, err := db.Beginx()
+func Rollback(s store, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) (int, error) {
+	err := s.begin()
 	if err != nil {
 		return 0, err
 	}
-	deletedLogs, err := rollback(tx, migrations, repoOrder, toMigrationSerial)
+	deletedLogs, err := rollback(s, migrations, repoOrder, toMigrationSerial)
 	if err != nil {
-		return 0, multierror.Append(err, tx.Rollback())
+		return 0, multierror.Append(err, s.rollback())
 	}
-	return deletedLogs, tx.Commit()
+	return deletedLogs, s.commit()
 }
 
-func rollback(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) (int, error) {
-	repoToReverseIndexes, err := fetchReverseMigrationIndexesAfterSerial(tx, toMigrationSerial)
+func rollback(s store, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) (int, error) {
+	repoToReverseIndexes, err := s.fetchReverseMigrationIndexesAfterSerial(toMigrationSerial)
 	if err != nil {
 		return 0, err
 	}
@@ -103,14 +100,14 @@ func rollback(tx *sqlx.Tx, migrations Migrations, repoOrder RepoOrder, toMigrati
 			if len(migrations[orderedRepo]) < migrationIdx {
 				return 0, errors.New("migrations passed to Rollback func are not in sync with migrations log. You might want to run CheckLogTableIntegrity func")
 			}
-			_, err := tx.Exec(migrations[orderedRepo][migrationIdx].Down)
+			err := s.exec(migrations[orderedRepo][migrationIdx].Down)
 			if err != nil {
 				return 0, err
 			}
 			logsToDelete = append(logsToDelete, migrationLog{Idx: migrationIdx, Repo: orderedRepo})
 		}
 	}
-	err = deleteLogs(tx, logsToDelete)
+	err = s.deleteLogs(logsToDelete)
 	if err != nil {
 		return 0, err
 	}
