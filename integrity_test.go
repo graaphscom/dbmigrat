@@ -95,8 +95,9 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 	})
 
 	t.Run("db error", func(t *testing.T) {
-		res, err := CheckLogTableIntegrity(errorStoreMock{}, Migrations{})
-		assert.EqualError(t, err, "example error")
+		storeMock := errorStoreMock{wrapped: pgStore, errFetchAllMigrationLogs: true}
+		res, err := CheckLogTableIntegrity(storeMock, Migrations{})
+		assert.EqualError(t, err, exampleErr.Error())
 		assert.Nil(t, res)
 	})
 }

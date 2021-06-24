@@ -1,7 +1,6 @@
 package dbmigrat
 
 import (
-	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -174,21 +173,3 @@ func TestDeleteLogs(t *testing.T) {
 	assert.Equal(t, 0, migrationLogs[0].Idx)
 	assert.Equal(t, Repo("foo"), migrationLogs[0].Repo)
 }
-
-func (s errorStoreMock) CreateLogTable() error                            { return exampleErr }
-func (s errorStoreMock) fetchAllMigrationLogs() ([]migrationLog, error)   { return nil, exampleErr }
-func (s errorStoreMock) fetchLastMigrationSerial() (int, error)           { return 0, exampleErr }
-func (s errorStoreMock) insertLogs(logs []migrationLog) error             { return exampleErr }
-func (s errorStoreMock) fetchLastMigrationIndexes() (map[Repo]int, error) { return nil, exampleErr }
-func (s errorStoreMock) fetchReverseMigrationIndexesAfterSerial(serial int) (map[Repo][]int, error) {
-	return nil, exampleErr
-}
-func (s errorStoreMock) deleteLogs(logs []migrationLog) error { return exampleErr }
-func (s errorStoreMock) begin() error                         { return exampleErr }
-func (s errorStoreMock) rollback() error                      { return exampleErr }
-func (s errorStoreMock) commit() error                        { return exampleErr }
-func (s errorStoreMock) exec(query string) error              { return exampleErr }
-
-var exampleErr = errors.New("example error")
-
-type errorStoreMock struct{}
