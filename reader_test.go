@@ -2,6 +2,7 @@ package dbmigrat
 
 import (
 	"embed"
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"io/fs"
 	"os"
@@ -131,6 +132,20 @@ func TestReadDir(t *testing.T) {
 		assert.EqualError(t, err, errFileNameDirection.Error())
 		assert.Equal(t, []Migration(nil), migrations)
 	})
+	t.Run("returns error when file open filed", func(t *testing.T) {
+		fileSys := fstest.MapFS{
+			"0.description.up":   {},
+			"0.description.down": {},
+		}
+		migrations, err := ReadDir(fileSysMock{wrapped: fileSys, brokenFileName: "0.description.up"}, ".")
+		assert.EqualError(t, err, errOpenFiled.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+
+		migrations, err = ReadDir(fileSysMock{wrapped: fileSys, brokenFileName: "0.description.down"}, ".")
+		assert.EqualError(t, err, errOpenFiled.Error())
+		assert.Equal(t, []Migration(nil), migrations)
+	})
+
 }
 
 func TestParseFileNames(t *testing.T) {
@@ -180,3 +195,17 @@ func TestParseFileName(t *testing.T) {
 		assert.EqualError(t, err, errFileNameDirection.Error())
 	})
 }
+
+type fileSysMock struct {
+	wrapped        fs.FS
+	brokenFileName string
+}
+
+func (f fileSysMock) Open(name string) (fs.File, error) {
+	if name == f.brokenFileName {
+		return nil, errOpenFiled
+	}
+	return f.wrapped.Open(name)
+}
+
+var errOpenFiled = errors.New("mocked file sys: file open failed")
