@@ -17,7 +17,7 @@ var pgStore *PostgresStore
 func TestMain(m *testing.M) {
 	_db, err := sqlx.Open("postgres", "postgres://dbmigrat:dbmigrat@localhost:5432/dbmigrat?sslmode=disable")
 	db = _db
-	pgStore = &PostgresStore{db: db}
+	pgStore = &PostgresStore{DB: db}
 	if err != nil {
 		log.Fatalln(err)
 	}

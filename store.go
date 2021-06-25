@@ -99,7 +99,7 @@ func (s PostgresStore) deleteLogs(logs []migrationLog) error {
 }
 
 func (s *PostgresStore) begin() error {
-	tx, err := s.db.Beginx()
+	tx, err := s.DB.Beginx()
 	s.tx = tx
 	return err
 }
@@ -125,7 +125,7 @@ func (s PostgresStore) getDbAccessor() dbAccessor {
 	if s.tx != nil {
 		return s.tx
 	}
-	return s.db
+	return s.DB
 }
 
 type dbAccessor interface {
@@ -136,7 +136,7 @@ type dbAccessor interface {
 }
 
 type PostgresStore struct {
-	db *sqlx.DB
+	DB *sqlx.DB
 	tx *sqlx.Tx
 }
 
