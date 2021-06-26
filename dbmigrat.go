@@ -83,6 +83,12 @@ func migrate(s store, migrations Migrations, repoOrder RepoOrder) (int, error) {
 	return insertedLogsCount, nil
 }
 
+// Rollback rolls back migrations applied by Migrate func
+//
+// repoOrder should be reversed one passed to Migrate func
+//
+// migration serial represents applied migrations (from different repos) in single run of Migrate func.
+// When toMigrationSerial == -1, then all applied migrations will be rolled back.
 func Rollback(s store, migrations Migrations, repoOrder RepoOrder, toMigrationSerial int) (int, error) {
 	err := s.begin()
 	if err != nil {
@@ -138,7 +144,7 @@ type RepoOrder []Repo
 // Repo is set of migrations. It allows for storing migrations in several locations.
 // Example:
 // e-commerce app might store authentication related migrations in repo "auth"
-// while warehouse migrations in repo "warehouse".
+// while billing migrations in repo "billing".
 type Repo string
 
 func sha1Checksum(data string) string {

@@ -1,5 +1,7 @@
 package dbmigrat
 
+// CheckLogTableIntegrity compares provided migrations with saved ones in migration log.
+// It returns error when log contains migrations not present in migrations passed as argument to this func.
 func CheckLogTableIntegrity(s store, migrations Migrations) (*IntegrityCheckResult, error) {
 	migrationLogs, err := s.fetchAllMigrationLogs()
 
@@ -40,8 +42,8 @@ func newIntegrityCheckResult() *IntegrityCheckResult {
 	}
 }
 
-// IntegrityCheckResult
-// RedundantRepos and RedundantMigrations represent objects which exist in DB log but not in passed migrations
+// IntegrityCheckResult contains information about objects which exist in DB log
+// but not in passed migrations to the CheckLogTableIntegrity func.
 type IntegrityCheckResult struct {
 	IsCorrupted         bool
 	RedundantRepos      map[Repo]bool

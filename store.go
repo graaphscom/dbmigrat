@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// CreateLogTable creates table in db where applied migrations will be saved.
+// This should be called before use of other functions from dbmigrat lib.
 func (s PostgresStore) CreateLogTable() error {
 	_, err := s.getDbAccessor().Exec(`
 		create table if not exists dbmigrat_log

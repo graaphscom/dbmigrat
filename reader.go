@@ -10,6 +10,18 @@ import (
 	"strings"
 )
 
+// ReadDir is helper func which allows for reading migrations from directory.
+// Directory under provided path must contain files only.
+// Files names must follow convention: a.b.c
+// where a is incrementing int (0,1,2,3,..), b is description, c is direction - "up" or "down".
+// Every migration must have corresponding up and down file.
+// Up and down file for same migration must have same description.
+//
+// Examples of valid files names:
+//	0.create_users_table.up
+//	0.create_users_table.down.sql
+//	1.add_username_column.up
+//	1.add_username_column.down.sql
 func ReadDir(fileSys fs.FS, path string) ([]Migration, error) {
 	dirEntries, err := fs.ReadDir(fileSys, path)
 	if err != nil {
