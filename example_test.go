@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
 	"log"
 )
 
@@ -55,4 +56,49 @@ func ExampleMigrate() {
 	}
 	fmt.Printf("[dbmigrat] applied %d migrations\n", logsCount)
 	// Output: [dbmigrat] applied 3 migrations
+}
+
+func ExampleRollback() {
+	// resetDB only for testing purposes - you may ignore it
+	err := th.resetDB()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	db, err := sqlx.Open("postgres", "postgres://dbmigrat:dbmigrat@localhost:5432/dbmigrat?sslmode=disable")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	pgStore := &PostgresStore{DB: db}
+	err = pgStore.CreateLogTable()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Load migrations:
+	authMigrations, err := ReadDir(exampleFixture, "fixture/auth")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	billingMigrations, err := ReadDir(exampleFixture, "fixture/billing")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	migrations := Migrations{
+		"auth":    authMigrations,
+		"billing": billingMigrations,
+	}
+	_, err = Migrate(pgStore, migrations, RepoOrder{"auth", "billing"})
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Rollback migrations
+	logsCount, err := Rollback(pgStore, migrations, RepoOrder{"billing", "auth"}, -1)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("[dbmigrat] rolled back %d migrations\n", logsCount)
+	// Output: [dbmigrat] rolled back 3 migrations
 }
