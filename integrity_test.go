@@ -6,19 +6,24 @@ import (
 )
 
 func TestCheckLogTableIntegrity(t *testing.T) {
-	assert.NoError(t, resetDB())
-	assert.NoError(t, pgStore.CreateLogTable())
+	assert.NoError(t, th.resetDB())
+	assert.NoError(t, th.pgStore.CreateLogTable())
+
+	truncateLogTable := func () error {
+		_, err := th.db.Exec(`truncate dbmigrat_log`)
+		return err
+	}
 
 	t.Run("Empty migrations log is not corrupted", func(t *testing.T) {
 		assert.NoError(t, truncateLogTable())
 
 		// # Check for no migrations passed from outside
-		result, err := CheckLogTableIntegrity(pgStore, Migrations{})
+		result, err := CheckLogTableIntegrity(th.pgStore, Migrations{})
 		assert.NoError(t, err)
 		assert.Equal(t, newIntegrityCheckResult(), result)
 
 		// # Check for several migrations passed from outside
-		result, err = CheckLogTableIntegrity(pgStore, Migrations{
+		result, err = CheckLogTableIntegrity(th.pgStore, Migrations{
 			"repo1": {},
 			"repo2": {{
 				Description: "example migration",
@@ -32,7 +37,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 	t.Run("Not corrupted log with one migration and extra migrations passed from outside", func(t *testing.T) {
 		assert.NoError(t, truncateLogTable())
 		upSql := "create table foo (id integer primary key)"
-		assert.NoError(t, pgStore.insertLogs([]migrationLog{{
+		assert.NoError(t, th.pgStore.insertLogs([]migrationLog{{
 			Idx:             0,
 			Repo:            "repo1",
 			MigrationSerial: 0,
@@ -40,7 +45,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			Description:     "example migration",
 		}}))
 
-		result, err := CheckLogTableIntegrity(pgStore, Migrations{
+		result, err := CheckLogTableIntegrity(th.pgStore, Migrations{
 			"repo1": {
 				{Up: upSql},
 				{Up: "example additional"},
@@ -75,9 +80,9 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 			Checksum:        sha1Checksum("example"),
 			Description:     "example migration redundant repo",
 		}
-		assert.NoError(t, pgStore.insertLogs([]migrationLog{invalidChecksum, redundantMigration, redundantRepo}))
+		assert.NoError(t, th.pgStore.insertLogs([]migrationLog{invalidChecksum, redundantMigration, redundantRepo}))
 
-		result, err := CheckLogTableIntegrity(pgStore, Migrations{
+		result, err := CheckLogTableIntegrity(th.pgStore, Migrations{
 			"repo1": {
 				{Up: "sql other than stored in log"},
 			},
@@ -95,7 +100,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 	})
 
 	t.Run("db error", func(t *testing.T) {
-		storeMock := errorStoreMock{wrapped: pgStore, errFetchAllMigrationLogs: true}
+		storeMock := errorStoreMock{wrapped: th.pgStore, errFetchAllMigrationLogs: true}
 		res, err := CheckLogTableIntegrity(storeMock, Migrations{})
 		assert.EqualError(t, err, exampleErr.Error())
 		assert.Nil(t, res)

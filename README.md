@@ -3,3 +3,10 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/graaphscom/dbmigrat.svg)](https://pkg.go.dev/github.com/graaphscom/dbmigrat)
 
 # dbmigrat
+This lib allows for maintaining database migrations in several
+locations (repos).
+
+# installation
+```
+go get github.com/graaphscom/dbmigrat
+```
