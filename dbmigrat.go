@@ -9,6 +9,16 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
+// Migrate applies migrations to the store in given repoOrder.
+//
+// store is implemented by PostgresStore
+//
+// migrations parameter is a map where keys are repositories names (string),
+// values are arrays of properly ordered Migration.
+//
+// repoOrder parameter is an array of repositories names (string). It
+// determines order in which values from migrations map will be applied.
+// eg. if migrations in repo "A" have foreign keys to repo "B" - then repoOrder should be {"B", "A"}
 func Migrate(s store, migrations Migrations, repoOrder RepoOrder) (int, error) {
 	err := s.begin()
 	if err != nil {
