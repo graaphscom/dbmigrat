@@ -9,7 +9,7 @@ func TestCheckLogTableIntegrity(t *testing.T) {
 	assert.NoError(t, th.resetDB())
 	assert.NoError(t, th.pgStore.CreateLogTable())
 
-	truncateLogTable := func () error {
+	truncateLogTable := func() error {
 		_, err := th.db.Exec(`truncate dbmigrat_log`)
 		return err
 	}
