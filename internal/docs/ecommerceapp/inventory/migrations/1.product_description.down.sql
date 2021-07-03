@@ -1,0 +1,1 @@
+alter table product drop column description;
