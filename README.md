@@ -65,7 +65,7 @@ var inventory embed.FS
 ```
 2. Connect to the database, create migrations log table
 (`CreateLogTable` does nothing when the table already exists):
-```
+```diff
 package main
 
 import (
@@ -98,7 +98,7 @@ var inventory embed.FS
 +
 ```
 3. Read migrations from filesystems and build migrations map:
-```
+```diff
 package main
 
 import (
@@ -151,7 +151,7 @@ func main() {
 4. Apply migrations. Notice that `billing` module has references to
 `auth` and `inventory`. For that reason third argument to `dbmigrat.Migrate`
 is `dbmigrat.RepoOrder{"auth", "inventory", "billing"}`
-```
+```diff
 package main
 
 import (
@@ -216,7 +216,7 @@ That's because all these migrations were applied by a single run.
 
 ### Let's add product's description
 1. create migrations files with SQL alter table statements: 
-```
+```diff
   |-- ecommerceapp
   |   |-- auth
   |   |   `-- migrations
@@ -244,7 +244,7 @@ Notice that this time migration serial is equal to one.
 Rollback allows for reverting migrations to a specified migration serial.
 
 Let's roll back the addition of the product's description. Edit the `main.go`:
-```
+```diff
 package main
 
 import (
