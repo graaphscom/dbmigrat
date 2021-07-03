@@ -307,3 +307,10 @@ func main() {
 Notice that comparing to the `Migrate` function, `RepoOrder` argument is reversed.
 
 If we would like to roll back all migrations, we would provide `-1` as the last argument to the `Rollback`.
+
+## Example code
+- [example test](example_test.go)
+- [example ecommerce app](internal/docs/ecommerceapp)
+
+## Credits
+ER diagram built with https://staruml.io
